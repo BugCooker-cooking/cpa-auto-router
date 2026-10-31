@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Auto Router · 自动模型路由</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--ink:#1d2433;--mute:#6b7488;--line:#e6e8ef;--pri:#4f6bff;--pri2:#eef1ff;--ok:#16a34a;--warn:#d97706;--bad:#dc2626}
+*{box-sizing:border-box}body{margin:0;font:14px/1.55 -apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--ink)}
+header{display:flex;align-items:center;gap:16px;padding:14px 28px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.logo{width:30px;height:30px;border-radius:9px;background:linear-gradient(135deg,#4f6bff,#9b5cff);display:grid;place-items:center;color:#fff;font-weight:700}
+h1{font-size:16px;margin:0}.ver{color:var(--mute);font-size:12px}
+nav{display:flex;gap:4px;margin-left:24px}nav button{border:0;background:none;padding:7px 14px;border-radius:8px;cursor:pointer;color:var(--mute);font:inherit}
+nav button.on{background:var(--pri2);color:var(--pri);font-weight:600}
+.key{margin-left:auto;display:flex;gap:8px;align-items:center}
+input,select{font:inherit;border:1px solid var(--line);border-radius:8px;padding:6px 10px;background:#fff;color:var(--ink)}
+input:focus,select:focus{outline:2px solid var(--pri2);border-color:var(--pri)}
+.btn{white-space:nowrap;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font:inherit}
+.btn.p{background:var(--pri);border-color:var(--pri);color:#fff}.btn.d{color:var(--bad)}
+main{max-width:1180px;margin:24px auto;padding:0 24px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:18px}
+.card h2{font-size:15px;margin:0 0 4px}.card .sub{color:var(--mute);font-size:12.5px;margin-bottom:14px}
+.stat .n{font-size:26px;font-weight:700}.stat .l{color:var(--mute);font-size:12.5px}
+table{width:100%;border-collapse:collapse}th{white-space:nowrap;font-weight:500;color:var(--mute);text-align:left;font-size:12.5px;padding:8px;border-bottom:1px solid var(--line)}
+td{padding:8px;border-bottom:1px solid #f0f1f5;vertical-align:middle}tr:last-child td{border-bottom:0}
+.tag{white-space:nowrap;display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;background:#f1f3f8;color:#485066}
+.t1{background:#e8f7ee;color:#15803d}.t2{background:#e7f1ff;color:#1d5fd1}.t3{background:#f2ecff;color:#6d3fd8}.t4{background:#fff1e3;color:#c2570c}.t5{background:#ffe8e8;color:#c42020}
+.esc{color:var(--warn);font-weight:600}.mono{font-family:ui-monospace,Consolas,monospace;font-size:12.5px}
+.row{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin:10px 0}.row>label:first-child{min-width:150px;color:var(--mute)}
+.sw{position:relative;width:40px;height:22px;display:inline-block}.sw input{display:none}.sw span{position:absolute;inset:0;border-radius:99px;background:#d4d8e3;transition:.2s;cursor:pointer}
+.sw span:before{content:"";position:absolute;width:16px;height:16px;left:3px;top:3px;border-radius:50%;background:#fff;transition:.2s}.sw input:checked+span{background:var(--pri)}.sw input:checked+span:before{left:21px}
+.toast{position:fixed;bottom:24px;right:24px;background:#1d2433;color:#fff;padding:10px 16px;border-radius:10px;opacity:0;transition:.3s}.toast.show{opacity:1}
+.dh{width:58px;text-align:center}.sc{width:52px;text-align:center;padding:6px 4px}.wbar{display:inline-block;margin:1px 4px 1px 0;padding:0 6px;border-radius:6px;background:#eef1ff;color:#3b4fd8;font-size:12px;white-space:nowrap}.empty{color:var(--mute);text-align:center;padding:26px}.hide{display:none}.small{font-size:12px;color:var(--mute)}
+.keylink{margin-left:auto;font-size:12.5px;color:var(--mute);cursor:pointer;border:0;background:none;padding:4px 8px;border-radius:6px}.keylink:hover{background:var(--pri2);color:var(--pri)}
+.modal{position:fixed;inset:0;background:rgba(20,26,40,.45);display:grid;place-items:center;z-index:50}.modal.hide{display:none}
+.mbox{background:#fff;border-radius:16px;padding:26px 28px;width:400px;box-shadow:0 20px 60px #0004}.mbox h3{margin:0 0 6px;font-size:17px}.mbox p{margin:0 0 16px;color:var(--mute);font-size:13px}
+.mbox input[type=password]{width:100%;padding:9px 12px;font-size:15px}.mbox .err{color:var(--bad);font-size:12.5px;min-height:18px;margin:6px 0}
+.flowwrap{overflow-x:auto}svg.flow{display:block;min-width:1000px}svg.flow text{font:12px -apple-system,"Segoe UI","Microsoft YaHei",sans-serif;fill:#1d2433}
+svg.flow .nd rect{fill:#fff;stroke:#d5d9e6;stroke-width:1.2}svg.flow .nd.hot rect{stroke:var(--pri);stroke-width:2.2;fill:#f6f8ff}svg.flow .nd.bad rect{stroke:var(--bad)}
+svg.flow .ed{fill:none;stroke:#c9cfde;stroke-linecap:round;opacity:.85}svg.flow .ed.hot{stroke:var(--pri);opacity:1;stroke-dasharray:8 6;animation:dash 1s linear infinite}
+@keyframes dash{to{stroke-dashoffset:-14}}svg.flow .col{font-size:12px;fill:#6b7488;font-weight:600}svg.flow .sm{font-size:11px;fill:#6b7488}
+.sl tr{cursor:pointer}.sl tr:hover td{background:#f6f8ff}.sl tr.on td{background:var(--pri2)}
+.ok{color:var(--ok)}.bad{color:var(--bad)}
+
+/* ---- 0.3.4 layout: fluid width, grids ---- */
+:root{--chip:#f1f3f8;--chipink:#485066;--row:#f0f1f5;--hover:#f6f8ff;--node:#fff;--nodeline:#d5d9e6;--edge:#c9cfde;--shadow:0 1px 2px #0000000a;--wbar:#eef1ff;--wbarink:#3b4fd8;--modalbg:rgba(20,26,40,.45);color-scheme:light}
+html[data-theme=dark]{--bg:#151412;--card:#1d1b18;--ink:#ece9e4;--mute:#9a958d;--line:#2e2a26;--pri:#7b8cff;--pri2:#2a2c45;--ok:#4ade80;--warn:#f0a94a;--bad:#f87171;--chip:#262320;--chipink:#c8c3bb;--row:#26231f;--hover:#24221f;--node:#201e1b;--nodeline:#3a3631;--edge:#4a453f;--wbar:#2a2c45;--wbarink:#aab4ff;--modalbg:rgba(0,0,0,.6);color-scheme:dark}
+html[data-theme=dark] .t1{background:#16301f;color:#6ee7a0}html[data-theme=dark] .t2{background:#172a46;color:#8cb8ff}html[data-theme=dark] .t3{background:#2a2145;color:#c4a8ff}html[data-theme=dark] .t4{background:#3a2716;color:#ffb27a}html[data-theme=dark] .t5{background:#3d1a1a;color:#ff9a9a}
+header{background:var(--card);padding:12px clamp(16px,2.2vw,44px);flex-wrap:wrap;row-gap:8px;box-shadow:var(--shadow)}
+main{max-width:min(1960px,96vw);margin:22px auto;padding:0 clamp(12px,1.6vw,32px)}
+.card{background:var(--card);border-color:var(--line);box-shadow:var(--shadow);padding:20px 24px;margin-bottom:20px}
+.card h2{font-size:15.5px;letter-spacing:.2px}
+td{border-bottom-color:var(--row)}.tag{background:var(--chip);color:var(--chipink)}.wbar{background:var(--wbar);color:var(--wbarink)}
+input,select,.btn{background:var(--card);color:var(--ink);border-color:var(--line)}.btn.p{background:var(--pri);border-color:var(--pri);color:#fff}
+.hide{display:none!important}
+.grid{grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:20px}
+.tw{overflow-x:auto}
+.pm{min-width:300px;width:100%}.pt{width:64px}.sc{width:46px;padding:5px 2px}.dh{width:50px;font-size:12px}
+#poolrows td{padding:7px 6px}
+.imgcell{text-align:center}.badge-img{display:inline-block;padding:0 7px;border-radius:99px;font-size:11.5px;background:#fff4dc;color:#a15c00;white-space:nowrap}
+html[data-theme=dark] .badge-img{background:#3a2d12;color:#ffcf73}
+.modal{background:var(--modalbg)}.mbox{background:var(--card);color:var(--ink)}
+svg.flow text{fill:var(--ink)}svg.flow .nd rect{fill:var(--node);stroke:var(--nodeline)}svg.flow .nd.hot rect{fill:var(--pri2)}svg.flow .ed{stroke:var(--edge)}svg.flow .col,svg.flow .sm{fill:var(--mute)}
+svg.flow .nd.off rect{stroke-dasharray:4 3;opacity:.55}
+.sl tr:hover td{background:var(--hover)}.toast{background:var(--ink);color:var(--card)}
+@media(min-width:1500px){#pool,#cls,#esc,#status{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:20px;align-items:start}
+ #pool>.card:first-child,#pool>.row,#cls>.row,#esc>.row,#status>.grid,#status>.card:nth-of-type(3){grid-column:1/-1}}
+</style></head><body>
+<header><div class="logo">A</div><div><h1>Auto Router · 自动模型路由</h1><div class="ver" id="ver">—</div></div>
+<nav><button data-t="status" class="on">运行状态</button><button data-t="pool">模型池</button><button data-t="cls">分类器</button><button data-t="esc">自动升级</button><button data-t="flow">流程图</button></nav>
+<button class="keylink" id="kchange" title="更换 CPA 管理密钥">🔑 更换密钥</button><input id="key" type="hidden"></header>
+<div class="modal hide" id="kmodal"><div class="mbox"><h3>输入 CPA 管理密码</h3><p>运行状态、流程图与保存配置需要 CPA 的管理密钥（management key）。密钥只保存在本浏览器中。</p>
+<input id="kin" type="password" placeholder="管理密钥 / Management Key" autocomplete="current-password"><div class="err" id="kerr"></div>
+<div class="row" style="justify-content:space-between;margin:4px 0 0"><label style="min-width:auto;color:var(--ink)"><input type="checkbox" id="krem" checked> 记住（保存在本浏览器）</label>
+<span><button class="btn" id="kskip">稍后</button> <button class="btn p" id="kok">连接</button></span></div></div></div>
+<main>
+<section id="status">
+ <div class="grid">
+  <div class="card stat"><div class="n" id="s-sess">0</div><div class="l">活跃会话</div></div>
+  <div class="card stat"><div class="n" id="s-dec">0</div><div class="l">近期路由决策</div></div>
+  <div class="card stat"><div class="n" id="s-esc">0</div><div class="l">处于升级状态的会话</div></div>
+  <div class="card stat"><div class="n" id="s-lat">—</div><div class="l">分类器延迟 P50</div></div>
+ </div>
+ <div class="card"><h2>会话</h2><div class="sub">每个对话当前的档位、升级步数与最近一次路由</div>
+  <table><thead><tr><th>会话</th><th>来源</th><th>轮次</th><th>基础档</th><th>升级</th><th>当前模型</th><th>最近原因</th><th>空闲</th></tr></thead><tbody id="sess"></tbody></table></div>
+ <div class="card"><h2>最近决策</h2><div class="sub">最新在前；分类耗时只在新一轮对话时产生</div>
+  <table><thead><tr><th>时间</th><th>虚拟模型</th><th>会话</th><th>档位</th><th>目标</th><th>维度权重</th><th>候选得分</th><th>原因 / 信号</th><th>分类耗时</th><th>Token（入 / 缓存 / 出）</th></tr></thead><tbody id="dec"></tbody></table></div>
+</section>
+<section id="pool" class="hide"><div class="card"><h2>模型池</h2><div class="sub">T1 最轻 → T5 最强。右侧为各能力维度评分 (0–10)：分类器给出维度权重，模型得分 = Σ 权重 × 维度分，再按难度档位扣分，取最高者。</div>
+ <div class="tw"><table><thead><tr><th style="width:70px">档位</th><th style="min-width:300px">模型</th><th style="width:130px">提供方</th><th style="width:150px">默认强度</th><th class="dh" data-dims></th><th class="dh" title="是否支持图片输入；请求含图片时只会路由到打开此项的模型">图片</th><th style="width:50px"></th></tr></thead><tbody id="poolrows"></tbody></table></div>
+ <div class="row"><button class="btn" id="addrow">＋ 添加模型</button><button class="btn mref">⟳ 刷新模型（自动获取）</button><span class="small mstat">—</span><span class="small">可用提供方：<span id="provs" class="mono">—</span></span></div><datalist id="mlist"></datalist></div>
+ <div class="card"><h2>虚拟模型</h2><div class="sub">在 /v1/models 中暴露的名字及其档位范围（修改名字需重启 CPA 才会出现在模型列表中）</div><div id="vms"></div></div>
+ <div class="card"><h2>基本</h2>
+  <div class="row"><label>启用路由</label><label class="sw"><input type="checkbox" id="enabled"><span></span></label></div>
+  <div class="row"><label>默认档位</label><select id="deftier"></select><span class="small">分类失败且无历史时使用</span></div>
+  <div class="row"><label>路由方式</label><select id="rmode"><option value="weighted">多维加权</option><option value="tier">仅按档位</option></select><span class="small">低于所需档位每档扣</span><input id="under" type="number" step=0.1 style="width:70px"><span class="small">高于每档扣</span><input id="over" type="number" step=0.1 style="width:70px"></div>
+  <div class="row"><label>尊重客户端强度</label><label class="sw"><input type="checkbox" id="respect"><span></span></label></div></div>
+ <div class="row"><button class="btn p save">保存配置</button><button class="btn d" id="reset">恢复为 config.yaml</button></div></section>
+<section id="cls" class="hide"><div class="card"><h2>分类器</h2><div class="sub">每轮新对话调用一次，判断难度档位（以及用户是否不满意）</div>
+ <div class="row"><label>类型</label><select id="ckind"><option value="model">CPA 内模型</option><option value="jev">Jev（自有密钥）</option></select></div>
+ <div id="cmodel"><div class="row"><label>模型</label><input id="cmod" list="mlist" style="width:300px" placeholder="搜索或选择 CPA 模型"><label style="min-width:auto">强度</label><select id="ceff"></select></div><div class="row"><button class="btn mref">⟳ 刷新模型（自动获取）</button><span class="small mstat">—</span></div></div>
+ <div id="cjev" class="hide"><div class="row"><label>Base URL</label><input id="jurl" style="width:380px" placeholder="https://…/v1"></div>
+  <div class="row"><label>模型</label><input id="jmod" style="width:300px"></div><div class="row"><label>API Key</label><input id="jkey" type="password" style="width:300px" placeholder="留空则保持不变"></div></div>
+ <div class="row"><label>超时 (ms)</label><input id="ctimeout" type="number" style="width:120px"></div>
+ <div class="row"><button class="btn p save">保存配置</button><button class="btn" id="bench">测速 ×5</button></div></div>
+ <div class="card"><h2>延迟统计</h2><table><thead><tr><th>分类器</th><th>次数</th><th>P50</th><th>P90</th><th>最大</th><th>成功/失败</th></tr></thead><tbody id="lat"></tbody></table><div id="benchout" class="small"></div></div></section>
+<section id="esc" class="hide"><div class="card"><h2>自动升级</h2><div class="sub">用户不满意、上游失败或模型拒答时，下一轮自动升一档；已在顶档则提高推理强度</div>
+ <div class="row"><label>启用</label><label class="sw"><input type="checkbox" id="eon"><span></span></label></div>
+ <div class="row"><label>用户不满意时升级</label><label class="sw"><input type="checkbox" id="eunhappy"><span></span></label></div>
+ <div class="row"><label>失败 / 拒答时升级</label><label class="sw"><input type="checkbox" id="efail"><span></span></label></div>
+ <div class="row"><label>最多升级步数</label><input id="emax" type="number" min="0" max="4" style="width:90px"></div>
+ <div class="row"><label>连续顺利 N 轮后降一步</label><input id="edecay" type="number" min="0" style="width:90px"></div>
+ <div class="row"><label>空闲重置 (分钟)</label><input id="eidle" type="number" min="0" style="width:90px"></div></div>
+ <div class="card"><h2>审查步骤（可选）</h2><div class="sub">上一轮回复包含以下标记时视为未通过，触发升级。默认关闭。</div>
+ <div class="row"><label>启用审查</label><label class="sw"><input type="checkbox" id="ron"><span></span></label></div>
+ <div class="row"><label>标记（逗号分隔）</label><input id="rmark" style="width:380px"></div></div>
+ <div class="row"><button class="btn p save">保存配置</button></div></section>
+<section id="flow" class="hide">
+ <div class="card"><h2>路由流程图</h2><div class="sub">请求 → 分类器（档位 + 维度权重）→ 升级 → 模型。连线粗细 = 近期决策次数，<span style="color:var(--pri)">蓝色流动线</span> = 最新一次（或所选会话）的路径。每 3 秒自动刷新。
+  <span style="margin-left:10px">范围</span> <select id="fwin"><option value="30">最近 30 次</option><option value="100" selected>最近 100 次</option><option value="200">最近 200 次</option></select> <span id="fstat" class="small"></span></div>
+  <div class="flowwrap"><svg class="flow" id="fsvg" height="420"></svg></div></div>
+ <div class="card"><h2>会话</h2><div class="sub">点击会话查看每一轮的流转路径；再次点击取消高亮</div>
+  <table class="sl"><thead><tr><th>会话</th><th>来源</th><th>轮次</th><th>基础档</th><th>升级</th><th>当前模型</th><th>Token 合计（入 / 缓存 / 出）</th><th>空闲</th></tr></thead><tbody id="fsess"></tbody></table></div>
+ <div class="card hide" id="fdetail"><h2 id="fdtitle">会话流转</h2><div class="sub">每一行是一次请求：新一轮会调用分类器；同一轮的后续工具调用沿用该轮决策</div>
+  <table><thead><tr><th>时间</th><th>轮次</th><th>分类</th><th>维度权重</th><th>升级</th><th>模型 (强度)</th><th>分类耗时</th><th>上游结果</th><th>原因</th></tr></thead><tbody id="fdrows"></tbody></table></div>
+</section>
+</main><div class="toast" id="toast"></div>
+<script>
+// Theme follows the CPA management UI: html[data-theme=dark|white] (absent = light / auto).
+function applyTheme(){let t=null;try{const ph=window.parent!==window&&window.parent.document.documentElement;if(ph)t=ph.getAttribute('data-theme')||'white'}catch(e){}
+ const q=new URLSearchParams(location.search).get('theme');if(q)t=q;if(!t)t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'white';
+ document.documentElement.setAttribute('data-theme',t==='dark'?'dark':'white');try{if(LAST&&!document.querySelector('#flow').classList.contains('hide'))renderFlow()}catch(e){}}
+applyTheme();try{if(window.parent!==window)new MutationObserver(applyTheme).observe(window.parent.document.documentElement,{attributes:true,attributeFilter:['data-theme','class']})}catch(e){}
+addEventListener('storage',applyTheme);matchMedia('(prefers-color-scheme: dark)').addEventListener('change',applyTheme);
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const base=location.pathname.includes('/v0/resource/')?location.origin+'/v0/management/auto-router':'./api';
+const DOM=['design','aesthetics','text','logic','backend','frontend','general','speed'],DN={design:'设计',aesthetics:'审美',text:'文本',logic:'逻辑严谨',backend:'后端编程',frontend:'前端编程',general:'通用',speed:'速度'},DT={design:'UI/UX、产品与交互设计',aesthetics:'品味、视觉与风格的美感和打磨',text:'读取理解长输入 + 清晰的写作/输出能力',logic:'输出推理与结论的逻辑严谨性（证明、算法、边界情况）',backend:'服务端/API/数据库/脚本代码',frontend:'Web/移动端界面代码',general:'通用知识与分析',speed:'响应速度、低延迟'};let CFG=null,PROV=[],MODELS=[],PROF={};const LV={minimal:'minimal 极低',low:'low 低',medium:'medium 中',high:'high 高',xhigh:'xhigh 很高',max:'max 最高'};
+// Reuse the key the CPA management UI already stores (same origin, only when it chose "remember"): cli-proxy-auth = enc::v2:: + base64(xor(json, "cli-proxy-api-webui::secure-storage|"+host)).
+function hostKey(){try{const raw=localStorage.getItem('cli-proxy-auth');if(!raw)return'';const dec=(b64,k)=>{const bin=atob(b64),kb=new TextEncoder().encode(k),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i)^kb[i%kb.length];return new TextDecoder().decode(u)};const g='cli-proxy-api-webui::secure-storage';let j=raw;if(raw.startsWith('enc::v2::'))j=dec(raw.slice(9),g+'|'+location.host);else if(raw.startsWith('enc::v1::'))j=dec(raw.slice(9),g+'|'+location.host+'|'+navigator.userAgent);const o=JSON.parse(j);return((o.state||o).managementKey||'').trim()}catch(e){return''}}
+let HOSTKEY=false;$('#key').value=localStorage.getItem('ar-key')||sessionStorage.getItem('ar-key')||'';if(!$('#key').value){const k=hostKey();if(k){$('#key').value=k;HOSTKEY=true}}
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200)}
+async function api(p,o={}){const r=await fetch(base+p,{...o,headers:{'Authorization':'Bearer '+$('#key').value,'Content-Type':'application/json'}});
+ if(r.status===401){askKey(!!$('#key').value);throw 401}const j=await r.json();if(!r.ok)throw j.error||r.status;return j}
+$$('nav button').forEach(b=>b.onclick=()=>{$$('nav button').forEach(x=>x.classList.toggle('on',x===b));$$('main>section').forEach(s=>s.classList.toggle('hide',s.id!==b.dataset.t))});
+let KASKED=false,KSKIP=false;function askKey(bad,force){if(!force&&(KSKIP||!$('#kmodal').classList.contains('hide')))return;$('#kerr').textContent=bad?'密钥无效，请重新输入':'';$('#kin').value='';$('#kmodal').classList.remove('hide');setTimeout(()=>$('#kin').focus(),50)}
+async function tryKey(){const k=$('#kin').value.trim();if(!k){$('#kerr').textContent='请输入密钥';return}const old=$('#key').value;$('#key').value=k;
+ try{const r=await fetch(base+'/state',{headers:{Authorization:'Bearer '+k}});if(r.status===401){$('#key').value=old;$('#kerr').textContent='密钥无效（401），请检查后重试';return}}catch(e){$('#kerr').textContent='连接失败：'+e;$('#key').value=old;return}
+ localStorage.removeItem('ar-key');sessionStorage.removeItem('ar-key');($('#krem').checked?localStorage:sessionStorage).setItem('ar-key',k);$('#kmodal').classList.add('hide');KSKIP=false;toast('已连接');load(true)}
+$('#kok').onclick=tryKey;$('#kin').onkeydown=e=>{if(e.key==='Enter')tryKey()};$('#kskip').onclick=()=>{KSKIP=true;$('#kmodal').classList.add('hide')};$('#kchange').onclick=()=>{KSKIP=false;askKey(false,true)};
+$('th[data-dims]').outerHTML=DOM.map(d=>`<th class="dh" title="${DT[d]}">${DN[d]}</th>`).join('');
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const tier=t=>t?`<span class="tag t${t}">T${t}</span>`:'—';
+const ago=s=>{if(!s)return'—';const d=(Date.now()-new Date(s))/1000;return d<60?Math.round(d)+' 秒':d<3600?Math.round(d/60)+' 分':Math.round(d/3600)+' 时'};
+const opt=(arr,v)=>arr.map(x=>`<option value="${x}" ${x==v?'selected':''}>${x||'(不设置)'}</option>`).join('');
+function renderStatus(s){$('#ver').textContent='v'+s.version+(s.saved_override?' · 使用面板保存的配置':' · 使用 config.yaml');
+ const ss=s.sessions||[],dd=s.decisions||[];$('#s-sess').textContent=ss.length;$('#s-dec').textContent=dd.length;$('#s-esc').textContent=ss.filter(x=>x.escalation>0).length;
+ const l=(s.classifier_latency||[]).filter(x=>!x.key.startsWith('test:'))[0];$('#s-lat').textContent=l?(l.p50_ms/1000).toFixed(1)+' s':'—';
+ $('#sess').innerHTML=ss.length?ss.map(x=>`<tr><td class="mono">${esc(x.session)}</td><td><span class="tag">${esc(x.source)}</span></td><td>${x.turn}</td><td>${tier(x.base_tier)}</td><td>${x.escalation?`<span class="esc">+${x.escalation}</span>`:'0'}</td><td class="mono">${esc(x.target)}</td><td>${esc(x.reason)}</td><td style="white-space:nowrap">${ago(x.last)}</td></tr>`).join(''):'<tr><td colspan=8 class="empty">暂无会话</td></tr>';
+ $('#dec').innerHTML=dd.length?dd.slice(0,60).map(d=>`<tr><td style="white-space:nowrap">${new Date(d.at).toLocaleTimeString('zh-CN',{hour12:false})}</td><td><span class="tag">${esc(d.virtual)}</span>${d.has_image?' <span class="badge-img" title="已排除：'+esc((d.image_filtered||[]).join(', '))+'">🖼 含图片</span>':''}</td><td class="mono">${esc(d.session)}</td><td>${tier(d.tier)}${d.escalation?` <span class="esc">+${d.escalation}</span>`:''}</td><td class="mono">${esc(d.target_model)}</td><td>${Object.entries(d.weights||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span class="wbar">${DN[k]} ${v}</span>`).join('')||'—'}</td><td class="small">${(d.scores||[]).slice(0,3).map(x=>`${esc(x.model.split('/').pop())} <b>${x.final}</b>`).join('<br>')}</td><td>${esc(d.reason)}${d.signal?` · <span class="esc">${esc(d.signal)}</span>`:''}</td><td>${d.classify_ms?d.classify_ms+' ms':'—'}</td><td style="white-space:nowrap">${tokHTML(d.result)}</td></tr>`).join(''):'<tr><td colspan=10 class="empty">暂无决策</td></tr>';
+ $('#lat').innerHTML=(s.classifier_latency||[]).map(x=>`<tr><td class="mono">${esc(x.key)}</td><td>${x.n}</td><td>${x.p50_ms} ms</td><td>${x.p90_ms} ms</td><td>${x.max_ms} ms</td><td>${x.ok}/${x.fail}</td></tr>`).join('')||'<tr><td colspan=6 class="empty">暂无数据</td></tr>';
+ LAST=s;if(!$('#flow').classList.contains('hide'))renderFlow();
+ PROV=s.available_providers||[];$('#provs').textContent=PROV.join(', ')||'（收到首个请求后显示）'}
+const mm=id=>MODELS.filter(m=>m.id===id);
+function prof(model,prov){const m=MODELS.find(x=>x.id===model&&x.provider===prov)||mm(model)[0];if(m)return m.thinking;return PROF[model+'@'+(prov||'').toLowerCase()]||null}
+function effOpts(pf,v){const ef=(pf&&pf.efforts)||[];let h=`<option value="">(不设置)</option>`+ef.map(x=>`<option value="${x}" ${x==v?'selected':''}>${LV[x]||x}${pf.default==x?' · 默认':''}</option>`).join('');
+ if(v&&!ef.includes(v))h+=`<option value="${esc(v)}" selected>${esc(v)} (不支持)</option>`;return h}
+function effHint(pf){return pf?(pf.efforts&&pf.efforts.length?`${pf.efforts.join(' / ')}`:'无思考档位')+` <span title="${esc(pf.source)}">ⓘ</span>`:'未在 CPA 中找到'}
+function provOpts(model,v){const ps=[...new Set(mm(model).map(m=>m.provider))];if(v&&!ps.includes(v))ps.push(v);return ps.map(x=>`<option ${x==v?'selected':''}>${esc(x)}</option>`).join('')||'<option value="">—</option>'}
+function imgDef(p){if(typeof p.image==='boolean')return p.image;const m=MODELS.find(x=>x.id===p.model);return m?!!m.image:false}
+function poolRow(p={tier:1,model:'',provider:'',effort:''},fresh){const tr=document.createElement('tr');
+ tr.innerHTML=`<td><select class="pt">${[1,2,3,4,5].map(t=>`<option ${t==p.tier?'selected':''}>${t}</option>`).join('')}</select></td><td><input class="pm" list="mlist" style="width:100%" placeholder="搜索 CPA 中的模型…" value="${esc(p.model)}"><div class="small ph"></div></td><td><select class="pp" style="width:100%">${provOpts(p.model,p.provider)}</select></td><td><select class="pe" style="width:100%"></select><div class="small eh"></div></td>${DOM.map(d=>`<td><input class="sc" data-d="${d}" type="number" min=0 max=10 step=0.5 value="${(p.scores||{})[d]??''}"></td>`).join('')}<td class="imgcell"><input type="checkbox" class="pi" title="支持图片输入" ${imgDef(p)?'checked':''}></td><td><button class="btn d">删除</button></td>`;
+ const pm=tr.querySelector('.pm'),pp=tr.querySelector('.pp'),pe=tr.querySelector('.pe');pm.title=p.model||'';pm.addEventListener('input',()=>pm.title=pm.value);
+ const upd=(setDef)=>{const pf=prof(pm.value.trim(),pp.value);pe.innerHTML=effOpts(pf,setDef?(pf&&pf.default||''):pe.value||p.effort);tr.querySelector('.eh').innerHTML=effHint(pf);
+  const ok=!pm.value||mm(pm.value.trim()).length>0;pm.style.borderColor=ok?'':'var(--bad)';tr.querySelector('.ph').textContent=ok?'':'该模型不在当前 CPA 模型列表中'};
+ pm.onchange=()=>{const v=pm.value.trim();const mi=MODELS.find(x=>x.id===v);if(mi)tr.querySelector('.pi').checked=!!mi.image;const ps=mm(v);pp.innerHTML=provOpts(v,ps[0]?ps[0].provider:'');upd(true)};pp.onchange=()=>upd(true);
+ pe.innerHTML=effOpts(prof(p.model,p.provider),p.effort);upd(false);
+ tr._re=()=>{const v=pm.value.trim(),cur=pp.value;const ps=mm(v);pp.innerHTML=provOpts(v,cur||(ps[0]?ps[0].provider:''));upd(false)};
+ tr.querySelector('button').onclick=()=>tr.remove();$('#poolrows').appendChild(tr);if(fresh)pm.focus()}
+function renderModels(){const seen=new Set();$('#mlist').innerHTML=MODELS.filter(m=>!seen.has(m.id)&&seen.add(m.id)).map(m=>`<option value="${esc(m.id)}">${esc(mm(m.id).map(x=>x.provider).join(', '))} · ${esc((m.thinking.efforts||[]).join('/')||'无思考')}</option>`).join('');
+ }
+function clsEff(){const pf=prof($('#cmod').value.trim(),'');$('#ceff').innerHTML=effOpts(pf,$('#ceff').value||(CFG&&CFG.classifier.effort)||'')}
+function renderConfig(c){CFG=c;$('#poolrows').innerHTML='';[...c.pool].sort((a,b)=>a.tier-b.tier).forEach(poolRow);
+ $('#vms').innerHTML=c.virtual_models.map(v=>`<div class="row"><span class="tag" style="min-width:90px">${esc(v.name)}</span><span class="small">档位</span> ${tier(v.min_tier||1)} → ${tier(v.max_tier||5)}</div>`).join('');
+ $('#enabled').checked=c.enabled;$('#deftier').innerHTML=opt([1,2,3,4,5],c.default_tier);$('#respect').checked=c.respect_client_effort;$('#rmode').value=c.routing.mode;$('#under').value=c.routing.under_penalty;$('#over').value=c.routing.over_penalty;
+ const k=c.classifier;$('#ckind').value=k.kind||'model';$('#cmod').value=k.model||'';$('#ceff').innerHTML=effOpts(prof(k.model,''),k.effort||'');$('#ctimeout').value=k.timeout_ms;
+ $('#jurl').value=k.jev.base_url||'';$('#jmod').value=k.jev.model||'';$('#jkey').value='';$('#jkey').placeholder=k.jev.api_key?('已保存 '+k.jev.api_key):'输入 API Key';kind();
+ const e=c.escalation;$('#eon').checked=e.enabled;$('#eunhappy').checked=e.on_unhappy;$('#efail').checked=e.on_failure;$('#emax').value=e.max_steps;$('#edecay').value=e.decay_after_turns;$('#eidle').value=e.reset_idle_minutes;
+ $('#ron').checked=e.review.enabled;$('#rmark').value=(e.review.markers||[]).join(', ')}
+function kind(){const j=$('#ckind').value==='jev';$('#cjev').classList.toggle('hide',!j);$('#cmodel').classList.toggle('hide',j)}$('#ckind').onchange=kind;
+$('#addrow').onclick=()=>poolRow(undefined,true);$('#cmod').onchange=()=>{$('#ceff').value='';clsEff()};
+function collect(){const c=JSON.parse(JSON.stringify(CFG));c.pool=$$('#poolrows tr').map(r=>({tier:+r.querySelector('.pt').value,model:r.querySelector('.pm').value.trim(),provider:r.querySelector('.pp').value.trim(),effort:r.querySelector('.pe').value,image:r.querySelector('.pi').checked,scores:Object.fromEntries([...r.querySelectorAll('.sc')].filter(i=>i.value!=='').map(i=>[i.dataset.d,+i.value]))})).filter(p=>p.model);
+ c.enabled=$('#enabled').checked;c.default_tier=+$('#deftier').value;c.respect_client_effort=$('#respect').checked;c.routing={mode:$('#rmode').value,under_penalty:+$('#under').value,over_penalty:+$('#over').value};
+ Object.assign(c.classifier,{kind:$('#ckind').value,model:$('#cmod').value.trim(),effort:$('#ceff').value,timeout_ms:+$('#ctimeout').value});
+ Object.assign(c.classifier.jev,{base_url:$('#jurl').value.trim(),model:$('#jmod').value.trim(),api_key:$('#jkey').value||c.classifier.jev.api_key});
+ Object.assign(c.escalation,{enabled:$('#eon').checked,on_unhappy:$('#eunhappy').checked,on_failure:$('#efail').checked,max_steps:+$('#emax').value,decay_after_turns:+$('#edecay').value,reset_idle_minutes:+$('#eidle').value});
+ c.escalation.review={enabled:$('#ron').checked,markers:$('#rmark').value.split(/[,，]/).map(s=>s.trim()).filter(Boolean)};return c}
+$$('.save').forEach(b=>b.onclick=async()=>{try{const r=await api('/config',{method:'PUT',body:JSON.stringify(collect())});renderConfig(r.config);toast('已保存，立即生效')}catch(e){if(e!==401)toast('保存失败：'+e)}});
+$('#reset').onclick=async()=>{if(!confirm('删除面板保存的配置并恢复 config.yaml？'))return;await api('/config',{method:'DELETE'});load(true);toast('已恢复')};
+$('#bench').onclick=async()=>{$('#benchout').textContent='测速中…';try{const r=await api('/classifier-test',{method:'POST',body:JSON.stringify({kind:$('#ckind').value,model:$('#cmod').value.trim(),effort:$('#ceff').value,n:5})});
+ $('#benchout').innerHTML=`<b>${esc(r.model)}</b>：P50 ${r.summary.p50_ms} ms · 最大 ${r.summary.max_ms} ms · 成功 ${r.summary.ok}/${r.rows.length}<br>`+r.rows.map(x=>`${x.ms} ms → ${esc(x.answer||x.error)}`).join('<br>');load()}catch(e){$('#benchout').textContent='失败：'+e}};
+let LAST=null,FSEL='';
+const fk=n=>n==null?'–':n>=10000?(n/1000).toFixed(1)+'k':String(n);
+function tokSum(ds){const t={n:0,in:0,out:0,c:null,cw:null,rs:0};ds.forEach(d=>{const r=d.result;if(!r)return;t.n++;t.in+=r.in_tokens||0;t.out+=r.out_tokens||0;t.rs+=r.reasoning_tokens||0;if(r.cached_tokens!=null)t.c=(t.c||0)+r.cached_tokens;if(r.cache_creation_tokens!=null)t.cw=(t.cw||0)+r.cache_creation_tokens});return t}
+function tokHTML(r){if(!r||(!r.in_tokens&&!r.out_tokens))return'<span class="small">–</span>';const hit=r.cached_tokens!=null&&r.in_tokens?` <span class="small">(${Math.round(100*r.cached_tokens/r.in_tokens)}%)</span>`:'';
+ return `<span class="tok" title="输入 ${r.in_tokens||0} · 缓存命中 ${r.cached_tokens??'未上报'}${r.cache_creation_tokens!=null?' · 缓存写入 '+r.cache_creation_tokens:''} · 输出 ${r.out_tokens||0}${r.reasoning_tokens?' (含推理 '+r.reasoning_tokens+')':''}">入 <b>${fk(r.in_tokens||0)}</b> · 缓存 <b>${fk(r.cached_tokens)}</b>${hit}${r.cache_creation_tokens!=null?' · 写 '+fk(r.cache_creation_tokens):''} · 出 <b>${fk(r.out_tokens||0)}</b></span>`}
+function tokLine(t){return t.n?`入 ${fk(t.in)} · 缓存 ${fk(t.c)}${t.cw!=null?' · 写 '+fk(t.cw):''} · 出 ${fk(t.out)}`:'–'}
+const short=m=>String(m||'').split('/').pop();
+function renderFlow(){const s=LAST;if(!s){$('#fstat').textContent='（等待数据：需要管理密钥）';return}
+ const n=+$('#fwin').value,dd=(s.decisions||[]).slice(0,n),pool=(CFG&&CFG.pool)||[];
+ const focus=FSEL?dd.filter(d=>d.session===FSEL):dd.slice(0,1);const off=new Set(((focus[0]||{}).has_image&&focus[0].image_filtered)||[]);const nimg=dd.filter(d=>d.has_image).length;const hot=new Set();
+ const cols=[[],[],[],[],[]];const idx={};const add=(c,id,label,sub)=>{if(!idx[id]){idx[id]={c,id,label,sub:sub||'',n:0,ok:0,bad:0,lat:[]};cols[c].push(idx[id])}return idx[id]};
+ [...new Set([...(CFG?CFG.virtual_models.map(v=>v.name):[]),...dd.map(d=>d.virtual)])].forEach(v=>add(0,'v:'+v,v,'入口'));
+ add(1,'cls','分类器',CFG?short(CFG.classifier.kind==='jev'?CFG.classifier.jev.model:CFG.classifier.model):'');
+ [1,2,3,4,5].forEach(t=>add(2,'t:'+t,'T'+t,''));
+ const maxEsc=Math.max(0,...dd.map(d=>d.escalation||0));for(let e=0;e<=Math.max(1,maxEsc);e++)add(3,'e:'+e,e?('升级 +'+e):'不升级','');
+ [...pool].sort((a,b)=>a.tier-b.tier).forEach(p=>add(4,'m:'+p.model,short(p.model),'T'+p.tier));
+ const E={};const edge=(a,b,d)=>{const k=a+'>'+b;E[k]=E[k]||{a,b,n:0};E[k].n++;if(focus.includes(d))hot.add(k)};
+ const wsum={};let wn=0;
+ dd.forEach(d=>{const v='v:'+d.virtual,t='t:'+(d.base_tier||d.tier),e='e:'+(d.escalation||0),m='m:'+d.model;add(4,m,short(d.model),'池外');
+  [v,'cls',t,e,m].forEach(id=>{const x=idx[id];x.n++;if(focus.includes(d))x.hot=true});
+  const mx=idx[m];(mx.ds=mx.ds||[]).push(d);if(d.result){d.result.ok?mx.ok++:mx.bad++;if(d.result.latency_ms)mx.lat.push(d.result.latency_ms)}
+  edge(v,'cls',d);edge('cls',t,d);edge(t,e,d);edge(e,m,d);if(d.weights){wn++;for(const[k,x]of Object.entries(d.weights))wsum[k]=(wsum[k]||0)+x}});
+ const W=Math.max(1000,$('#fsvg').parentNode.clientWidth),NW=[Math.min(200,W*.11),210,100,120,Math.min(300,Math.max(210,W*.15))],X=[20,W*.17,W*.38,W*.54,0];X[4]=W-NW[4]-20;
+ const H=Math.max(420,...cols.map((c,ci)=>c.length*(ci===4?74:58)+70));const svg=$('#fsvg');svg.setAttribute('width',W);svg.setAttribute('height',H);
+ const ny={};cols.forEach((c,ci)=>{const h=ci===1?150:ci===4?62:46,gap=ci===1?0:12,tot=c.length*(h+gap)-gap,y0=Math.max(50,(H-tot)/2+10);c.forEach((x,i)=>{x.x=X[ci];x.y=y0+i*(h+gap);x.w=NW[ci];x.h=h})});
+ const maxE=Math.max(1,...Object.values(E).map(e=>e.n));
+ let g=['入口','分类器','难度档位','升级','模型'].map((t,i)=>`<text class="col" x="${X[i]}" y="26">${t}</text>`).join('');
+ g+=Object.entries(E).map(([k,e])=>{const a=idx[e.a],b=idx[e.b],x1=a.x+a.w,y1=a.y+a.h/2,x2=b.x,y2=b.y+b.h/2,mx=(x1+x2)/2,sw=1.5+6*e.n/maxE;
+  return `<path class="ed ${hot.has(k)?'hot':''}" d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" stroke-width="${sw.toFixed(1)}"><title>${e.n} 次</title></path><text class="sm" x="${mx}" y="${(y1+y2)/2-4}" text-anchor="middle">${e.n}</text>`}).join('');
+ g+=Object.values(idx).map(x=>{let inner='';
+  if(x.id==='cls'){const tw=Object.entries(wsum).sort((a,b)=>b[1]-a[1]);inner=`<text x="${x.x+12}" y="${x.y+20}" font-weight="600">分类器</text><text class="sm" x="${x.x+12}" y="${x.y+36}">${esc(x.sub)} · ${x.n} 次${nimg?' · 🖼'+nimg:''}</text>`+
+   tw.slice(0,6).map(([k,v],i)=>{const r=v/wn;return `<text class="sm" x="${x.x+12}" y="${x.y+58+i*15}">${DN[k]||k}</text><rect x="${x.x+70}" y="${x.y+49+i*15}" width="${(100*r).toFixed(0)}" height="9" rx="3" fill="#8ea0ff"/><text class="sm" x="${x.x+175}" y="${x.y+58+i*15}" text-anchor="end">${(r*100).toFixed(0)}%</text>`}).join('')+(tw.length?'':`<text class="sm" x="${x.x+12}" y="${x.y+62}">暂无维度权重</text>`)}
+  else{const lat=x.lat.length?Math.round(x.lat.reduce((a,b)=>a+b,0)/x.lat.length):0;inner=`<text x="${x.x+10}" y="${x.y+19}" font-weight="600">${esc(x.label)}</text><text class="sm" x="${x.x+10}" y="${x.y+36}">${x.n} 次${x.sub?' · '+esc(x.sub):''}${x.c===4&&(x.ok||x.bad)?` · <tspan fill="#16a34a">✓${x.ok}</tspan>${x.bad?` <tspan fill="#dc2626">✗${x.bad}</tspan>`:''}${lat?' · '+(lat/1000).toFixed(1)+'s':''}`:''}</text>`}
+  if(x.c===4&&x.ds){const t=tokSum(x.ds);inner+=`<text class="sm" x="${x.x+10}" y="${x.y+53}">${tokLine(t)}</text><title>${esc(x.label)}：${t.n} 次有用量 · 输入 ${t.in} · 缓存命中 ${t.c??'未上报'}${t.cw!=null?' · 缓存写入 '+t.cw:''} · 输出 ${t.out}${t.rs?' · 推理 '+t.rs:''}</title>`}
+  const isOff=x.c===4&&off.has(x.id.slice(2));if(isOff)inner+=`<text class="sm" x="${x.x+x.w-8}" y="${x.y+19}" text-anchor="end" fill="#d97706">🚫图片</text>`;
+  return `<g class="nd ${x.hot?'hot':''} ${x.bad?'bad':''} ${isOff?'off':''}" opacity="${x.n||x.c===4?1:.45}"><rect x="${x.x}" y="${x.y}" width="${x.w}" height="${x.h}" rx="10"/>${inner}</g>`}).join('');
+ svg.innerHTML=g;$('#fstat').textContent=`${dd.length} 次决策 · ${new Date().toLocaleTimeString('zh-CN',{hour12:false})} 更新`+(FSEL?` · 高亮会话 ${FSEL}`:'');
+ const ss=s.sessions||[];$('#fsess').innerHTML=ss.length?ss.map(x=>`<tr data-s="${esc(x.session)}" class="${x.session===FSEL?'on':''}"><td class="mono">${esc(x.session)}</td><td><span class="tag">${esc(x.source)}</span></td><td>${x.turn}</td><td>${tier(x.base_tier)}</td><td>${x.escalation?`<span class="esc">+${x.escalation}</span>`:'0'}</td><td class="mono">${esc(x.target)}</td><td class="small" style="white-space:nowrap">${tokLine(tokSum((s.decisions||[]).filter(d=>d.session===x.session)))}</td><td>${ago(x.last)}</td></tr>`).join(''):'<tr><td colspan=8 class="empty">暂无会话</td></tr>';
+ $$('#fsess tr[data-s]').forEach(tr=>tr.onclick=()=>{FSEL=FSEL===tr.dataset.s?'':tr.dataset.s;renderFlow()});
+ const det=$('#fdetail');if(!FSEL){det.classList.add('hide');return}det.classList.remove('hide');$('#fdtitle').textContent='会话流转 · '+FSEL+' · 合计 '+tokLine(tokSum((s.decisions||[]).filter(d=>d.session===FSEL)));
+ const rows=(s.decisions||[]).filter(d=>d.session===FSEL);
+ $('#fdrows').innerHTML=rows.length?rows.map(d=>{const r=d.result;return `<tr><td style="white-space:nowrap">${new Date(d.at).toLocaleTimeString('zh-CN',{hour12:false})}</td><td>${d.turn}${d.new_turn?' <span class="tag">新一轮</span>':''}${d.has_image?' <span class="badge-img">🖼 含图片</span>':''}</td><td>${tier(d.base_tier)}${d.tier!==d.base_tier?' → '+tier(d.tier):''}</td><td>${Object.entries(d.weights||{}).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<span class="wbar">${DN[k]||k} ${v}</span>`).join('')||'—'}</td><td>${d.escalation?`<span class="esc">+${d.escalation}</span>`:'0'}</td><td class="mono">${esc(d.target_model)}${d.has_image&&(d.image_filtered||[]).length?`<div class="small">排除无图片能力：${esc(d.image_filtered.map(short).join(', '))}</div>`:''}</td><td>${d.classify_ms?d.classify_ms+' ms':'—'}</td><td>${r?(r.ok?`<span class="ok">✓ ${r.status}</span>`:`<span class="bad">✗ ${r.status||'失败'}</span>`)+(r.latency_ms?` · ${(r.latency_ms/1000).toFixed(1)}s`:'')+(r.ttft_ms?` · 首字 ${(r.ttft_ms/1000).toFixed(1)}s`:'')+`<div>${tokHTML(r)}</div>`:'<span class="small">等待</span>'}</td><td>${esc(d.reason)}${d.signal?` · <span class="esc">${esc(d.signal)}</span>`:''}</td></tr>`}).join(''):'<tr><td colspan=9 class="empty">该会话的决策已不在最近记录中</td></tr>'}
+const MURL=location.pathname.includes('/v0/resource/')?location.pathname.replace(/\/[^\/]*$/,'/models.json'):'./api/models';let MERR='',MAT=null,MBUSY=false,MTRY=0;
+function mstat(){const t=MBUSY?'正在从 CPA 获取模型…':MERR?`<span style="color:var(--bad)">获取失败：${esc(MERR)}</span>`:`CPA 当前可用模型 <b>${new Set(MODELS.map(m=>m.id)).size}</b> 个（不含 auto 虚拟模型）`+(MAT?` · 更新于 ${MAT.toLocaleTimeString('zh-CN',{hour12:false})}`:'');$$('.mstat').forEach(e=>e.innerHTML=t);$$('.mref').forEach(b=>b.disabled=MBUSY)}
+async function loadModels(manual){MBUSY=true;mstat();try{const r=await fetch(MURL+'?t='+Date.now(),{cache:'no-store'});const txt=await r.text();let j;try{j=JSON.parse(txt)}catch{throw `HTTP ${r.status}：返回的不是 JSON`}if(!r.ok)throw `HTTP ${r.status}：${j.error||txt.slice(0,120)}`;MODELS=j.models||[];MERR=MODELS.length?'':'CPA 返回 0 个模型（凭证/插件可能尚未加载完成，稍后自动重试）';MAT=new Date()}catch(e){MERR=String(e)}MBUSY=false;renderModels();mstat();$$('#poolrows tr').forEach(tr=>tr._re&&tr._re());if(CFG)clsEff();if(manual)toast(MERR?'刷新失败':'已刷新：'+new Set(MODELS.map(m=>m.id)).size+' 个模型');
+ if(!MODELS.length&&MTRY<5){MTRY++;setTimeout(()=>loadModels(),4000)}else if(MODELS.length)MTRY=0}
+$$('.mref').forEach(b=>b.onclick=()=>{MTRY=0;loadModels(true)});
+async function load(full){if(full)loadModels();try{const s=await api('/state');PROF=s.profiles||{};renderStatus(s);if(full||!CFG)renderConfig(s.config)}catch(e){if(e===401)$('#ver').textContent='未连接：需要 CPA 管理密钥（点右上角“更换密钥”输入）；模型列表仍可用'}}
+{const t=(location.hash||'').slice(1)||new URLSearchParams(location.search).get('tab');const b=t&&document.querySelector(`nav button[data-t="${t}"]`);if(b)b.click()}
+load(true);setInterval(()=>{if(!$('#status').classList.contains('hide'))load()},5000);setInterval(()=>{if(!$('#flow').classList.contains('hide'))load()},3000);
+$$('nav button').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.t==='flow'){renderFlow();load()}}));$('#fwin').onchange=()=>renderFlow();
+</script></body></html>

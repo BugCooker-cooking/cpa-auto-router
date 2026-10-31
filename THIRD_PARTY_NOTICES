@@ -1,0 +1,18 @@
+THIRD PARTY NOTICES
+===================
+
+1. oh-my-pi — https://github.com/can1357/oh-my-pi (MIT License)
+   The per-model thinking-level table in core/thinking_data.go (and the
+   generator tools/gen_thinking.py) is ported from oh-my-pi
+   packages/catalog/src/models.json @ commit c29f7c56.
+   Copyright (c) can1357 and oh-my-pi contributors.
+   Licensed under the MIT License; the full MIT terms are identical to those in
+   this repository's LICENSE file, with the copyright line above.
+
+2. magpie — https://github.com/yetone/magpie (MIT License, Copyright (c) 2026 yetone)
+   Design inspiration only (the idea of an automatic model router). No code
+   from magpie is included in this repository.
+
+3. Go dependencies (see go.mod):
+   - github.com/router-for-me/CLIProxyAPI/v8 — see its repository for license.
+   - gopkg.in/yaml.v3 — MIT / Apache-2.0.

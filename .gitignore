@@ -1,0 +1,10 @@
+dist/
+*.dll
+*.so
+*.h
+*.state.json
+state*.json
+*.models.json
+models*.json
+.test-keys*
+*.exe

@@ -1,0 +1,27 @@
+# CPA config.yaml -> plugins.configs.cpa-auto-router (M1 schema)
+cpa-auto-router:
+  enabled: true
+  virtual_models: ["auto", {name: "auto-fast", max_tier: 2}, {name: "auto-max", min_tier: 4}]
+  classifier:
+    kind: model                 # model = any CPA model; jev = direct OpenAI-compatible call
+    model: "gemini-3.8-flash-high"
+    effort: ""                  # optional suffix, e.g. low
+    timeout_ms: 6000
+    jev: {base_url: "", model: "", api_key: ""}
+  default_tier: 3
+  respect_client_effort: false
+  pool:
+    - {tier: 1, model: "gemini-3.5-flash-lite", provider: "my-provider"}
+    - {tier: 2, model: "commandcode-go/deepseek-v4-flash", provider: "my-provider", effort: "low"}
+    - {tier: 3, model: "gpt-5.6-sol", provider: "my-provider", effort: "medium"}
+    - {tier: 4, model: "gpt-6.1-sol", provider: "my-provider", effort: "high"}
+    - {tier: 5, model: "claude-opus-5-5-high", provider: "my-provider"}
+  escalation:
+    enabled: true
+    on_unhappy: true
+    on_failure: true            # upstream failure (via usage) or refusal
+    max_steps: 2
+    decay_after_turns: 3
+    reset_idle_minutes: 30
+    review: {enabled: false, markers: ["REVIEW: FAIL", "不符合预期"]}
+  state_file: "plugins/cpa-auto-router.state.json"   # panel saves here; overrides this yaml
