@@ -11,11 +11,21 @@ cpa-auto-router:
   default_tier: 3
   respect_client_effort: false
   pool:
-    - {tier: 1, model: "gemini-3.5-flash-lite", provider: "my-provider"}
-    - {tier: 2, model: "commandcode-go/deepseek-v4-flash", provider: "my-provider", effort: "low"}
-    - {tier: 3, model: "gpt-5.6-sol", provider: "my-provider", effort: "medium"}
-    - {tier: 4, model: "gpt-6.1-sol", provider: "my-provider", effort: "high"}
-    - {tier: 5, model: "claude-opus-5-5-high", provider: "my-provider"}
+    - {tier: 1, model: "gemini-3.5-flash-lite", provider: "prod"}
+    - {tier: 2, model: "commandcode-go/deepseek-v4-flash", provider: "prod", effort: "low"}
+    - {tier: 3, model: "gpt-5.6-sol", provider: "prod", effort: "medium"}
+    - {tier: 4, model: "gpt-6.1-sol", provider: "prod", effort: "high"}
+    - {tier: 5, model: "claude-opus-5-5-high", provider: "prod"}
+  routing:
+    mode: weighted              # weighted | tier
+    under_penalty: 1.5
+    over_penalty: 1.0
+    sticky: false               # cache-first: keep the session's current model when it is still eligible
+    sticky_margin: 0.8          # ...and its score is within this many points of the best model
+    failover: true              # on retriable upstream errors (conn/5xx/429/auth_not_found/timeout) cool the model and route to the next-best
+    failover_cooldown_seconds: 150
+    failover_max_attempts: 3    # attempts per request in inline mode (max 5)
+    failover_inline: false      # EXPERIMENTAL: retry inside the same request via the plugin executor
   escalation:
     enabled: true
     on_unhappy: true

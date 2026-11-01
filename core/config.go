@@ -103,7 +103,7 @@ func DefaultConfig() Config {
 		VirtualModels: []VirtualModel{{Name: "auto"}, {Name: "auto-fast", MaxTier: 2}, {Name: "auto-max", MinTier: 4}},
 		Classifier:    ClassifierConfig{Kind: "model", Model: "gemini-3.8-flash-high", TimeoutMs: 8000},
 		DefaultTier:   3,
-		Routing:       RoutingConfig{Mode: "weighted", UnderPenalty: 1.5, OverPenalty: 1.0},
+		Routing:       RoutingConfig{Mode: "weighted", UnderPenalty: 1.5, OverPenalty: 1.0, StickyMargin: DefaultStickyMargin, Failover: true, FailoverCooldownSeconds: DefaultFailoverCooldownSeconds, FailoverMaxAttempts: DefaultFailoverMaxAttempts},
 		Escalation: EscalationConfig{Enabled: true, OnUnhappy: true, OnFailure: true, MaxSteps: 2, DecayAfterTurns: 3, ResetIdleMinutes: 30,
 			Review: ReviewConfig{Enabled: false, Markers: []string{"REVIEW: FAIL", "不符合预期"}}},
 		StateFile: "plugins/cpa-auto-router.state.json",
@@ -123,6 +123,15 @@ func (c *Config) Normalize() {
 	}
 	if c.Routing.Mode == "" {
 		c.Routing.Mode = "weighted"
+	}
+	if c.Routing.FailoverCooldownSeconds <= 0 {
+		c.Routing.FailoverCooldownSeconds = DefaultFailoverCooldownSeconds
+	}
+	if c.Routing.FailoverMaxAttempts <= 0 {
+		c.Routing.FailoverMaxAttempts = DefaultFailoverMaxAttempts
+	}
+	if c.Routing.StickyMargin <= 0 {
+		c.Routing.StickyMargin = DefaultStickyMargin
 	}
 	for i := range c.Pool {
 		if e := c.Pool[i].Effort; e != "" {

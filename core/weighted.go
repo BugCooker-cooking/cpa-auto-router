@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 // Domains are the capability labels, in display order.
@@ -69,6 +70,71 @@ type RoutingConfig struct {
 	Mode         string  `yaml:"mode" json:"mode"`                   // weighted | tier
 	UnderPenalty float64 `yaml:"under_penalty" json:"under_penalty"` // per tier a model is below the needed tier
 	OverPenalty  float64 `yaml:"over_penalty" json:"over_penalty"`   // per tier a model is above the needed tier
+	// Sticky routing (cache-first): keep the session's current model while it is still
+	// eligible and its final score is within StickyMargin of the best candidate.
+	Sticky       bool    `yaml:"sticky" json:"sticky"`
+	StickyMargin float64 `yaml:"sticky_margin" json:"sticky_margin"` // score points; default DefaultStickyMargin
+	// Failover: a model whose upstream call fails with a retriable error is put in
+	// cooldown and skipped by routing; with FailoverInline the same request is also
+	// retried on the next eligible model (see docs for ABI limitations).
+	Failover                bool `yaml:"failover" json:"failover"`                                   // default true
+	FailoverCooldownSeconds int  `yaml:"failover_cooldown_seconds" json:"failover_cooldown_seconds"` // default 150
+	FailoverMaxAttempts     int  `yaml:"failover_max_attempts" json:"failover_max_attempts"`         // total attempts per request, default 3
+	FailoverInline          bool `yaml:"failover_inline" json:"failover_inline"`                     // experimental, default false
+}
+
+// Cooldown is the configured failover cooldown.
+func (r RoutingConfig) Cooldown() time.Duration {
+	s := r.FailoverCooldownSeconds
+	if s <= 0 {
+		s = DefaultFailoverCooldownSeconds
+	}
+	return time.Duration(s) * time.Second
+}
+
+// MaxAttempts is the configured failover attempt cap (1..5).
+func (r RoutingConfig) MaxAttempts() int {
+	n := r.FailoverMaxAttempts
+	if n <= 0 {
+		n = DefaultFailoverMaxAttempts
+	}
+	return min(n, 5)
+}
+
+// DefaultStickyMargin is below the default one-tier over-penalty (1.0), so stickiness
+// never outweighs a full tier of mismatch, but absorbs small weight jitter between turns.
+const DefaultStickyMargin = 0.8
+
+// StickyPick returns the candidate to keep for a session whose current model is cur,
+// or ok=false to use the top-ranked model. scores must be ranked (best first) and only
+// contain eligible models (vm range, image capability already filtered). need is the
+// required tier; a current model below it is not kept when a higher-tier model leads
+// (so escalation still moves the session up).
+func (r RoutingConfig) StickyPick(scores []ModelScore, cur string, need int) (ModelScore, bool) {
+	if !r.Sticky || cur == "" || len(scores) < 2 {
+		return ModelScore{}, false
+	}
+	top := scores[0]
+	if strings.EqualFold(top.Model, cur) {
+		return ModelScore{}, false
+	}
+	m := r.StickyMargin
+	if m <= 0 {
+		m = DefaultStickyMargin
+	}
+	for _, s := range scores[1:] {
+		if !strings.EqualFold(s.Model, cur) {
+			continue
+		}
+		if s.Tier < need && top.Tier > s.Tier {
+			return ModelScore{}, false
+		}
+		if top.Final-s.Final <= m+1e-9 {
+			return s, true
+		}
+		return ModelScore{}, false
+	}
+	return ModelScore{}, false
 }
 
 // ModelScore is one candidate's evaluation, for logs and the panel.

@@ -69,6 +69,14 @@ type envelope struct {
 	Error  *envelopeError  `json:"error,omitempty"`
 }
 
+// hostCallError is a failed host callback; Status carries the upstream HTTP status when known.
+type hostCallError struct {
+	Code, Message string
+	Status        int
+}
+
+func (e *hostCallError) Error() string { return e.Code + ": " + e.Message }
+
 type envelopeError struct {
 	Code       string `json:"code"`
 	Message    string `json:"message"`
@@ -163,7 +171,7 @@ func callHost(method string, payload any) (json.RawMessage, error) {
 	}
 	if !env.OK {
 		if env.Error != nil {
-			return nil, fmt.Errorf("%s: %s", env.Error.Code, env.Error.Message)
+			return nil, &hostCallError{Code: env.Error.Code, Message: env.Error.Message, Status: env.Error.HTTPStatus}
 		}
 		return nil, fmt.Errorf("host callback %s failed", method)
 	}

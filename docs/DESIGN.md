@@ -214,6 +214,10 @@ client --(model=auto)--> CPA handler
 
 ---
 
+### 5.1 粘性路由（v0.3.6，可选）
+
+`routing.sticky: true` 时，加权排序后若会话当前模型仍在候选列表中（已按虚拟模型档位范围、图片能力过滤）且 `top.final - cur.final ≤ routing.sticky_margin`（默认 0.8），沿用当前模型并在决策上记 `sticky: true`、`sticky_top: <原最高分模型>`、信号 `sticky`。若当前模型档位低于所需档位且最高分模型档位更高（升级场景）则不粘。目的：减少模型切换以提高提示词缓存命中率。
+
 ## 6. 自动升档（Auto-Escalation）
 
 ### 6.1 触发信号
@@ -393,3 +397,11 @@ type Decision struct {
 | 合计 | | **约 21–30 人日（4–6 周）** |
 
 测试策略：用 Gemini 3.8 Flash（经 CPA）作分类器跑 e2e；单测覆盖输入截断、continue、升/降档状态机、effort 夹取；录制若干 Claude Code / Codex 真实请求作回放夹具。
+
+## 自动故障转移（0.3.6）
+
+- **触发**：`core.Retriable(status, err)` —— 0（连接错误）、408、429、5xx、401/403/404，或错误文本含 `auth_not_found` / `timeout` / `connection`。其余 4xx 视为请求问题，不转移。
+- **冷却**：`Router.cool` 按基础模型名记录 `until`；`Decide` 先得出完整候选顺序（`order()`：加权模式按最终得分，档位模式按与目标档位的距离，均已过滤图片能力与档位范围），剔除冷却中的模型（记入 `Decision.Cooled`，信号 `skip-cooling`）；全部冷却时保留原顺序并置 `AllCooling`。剩余候选写入 `Decision.Fallbacks`。过期即视为恢复，成功的用量记录也会立即解除冷却。
+- **默认（跨请求）路径**：`usage.handle` 收到失败记录 → `Router.FailedUsage` 冷却该模型并返回 true，跳过失败升档。下一个请求自然绕开它。
+- **同请求路径（实验，`failover_inline`）**：`model.route` 返回 `TargetKind=self`，决策按请求体 SHA-256 暂存（2 分钟）。插件执行器取回候选列表（主选 + Fallbacks，提供方经 `resolveProvider` 解析），用 `core.RunFailover` 依次调用 `host.model.execute` / `host.model.execute_stream`（`ForcedProvider`、`Model=目标(强度)`、入口/出口协议均为原始格式、原始请求体与请求头、`host_callback_id`）。每次失败调用 `Router.AddHop` 记录跳转并把决策切到下一个模型。流式在读到首个数据块前失败可切换，之后通过 `host.stream.emit/close` 转发。
+- **上限**：`failover_max_attempts`（默认 3，最多 5）；不可重试错误立即返回。

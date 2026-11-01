@@ -23,7 +23,7 @@ import (
 )
 
 const pluginName = "cpa-auto-router"
-const pluginVersion = "0.3.5"
+const pluginVersion = "0.3.6"
 
 //go:embed panel.html
 var panelHTML []byte
@@ -52,7 +52,15 @@ func handleMethod(method string, req []byte) ([]byte, error) {
 		return routeModel(req)
 	case pluginabi.MethodExecutorIdentifier:
 		return okEnvelope(map[string]string{"identifier": pluginName})
-	case pluginabi.MethodExecutorExecute, pluginabi.MethodExecutorExecuteStream, pluginabi.MethodExecutorCountTokens, pluginabi.MethodExecutorHTTPRequest:
+	case pluginabi.MethodExecutorExecute, pluginabi.MethodExecutorExecuteStream:
+		if out, handled := failoverExecute(method == pluginabi.MethodExecutorExecuteStream, req); handled {
+			return out, nil
+		}
+		if m, _ := noImageMsg.Load().(string); m != "" {
+			return errorEnvelopeStatus("invalid_request_error", m, 400), nil
+		}
+		return errorEnvelope("not_routed", "auto-router: request reached the placeholder executor; check that the router is enabled and the pool is not empty"), nil
+	case pluginabi.MethodExecutorCountTokens, pluginabi.MethodExecutorHTTPRequest:
 		if m, _ := noImageMsg.Load().(string); m != "" {
 			return errorEnvelopeStatus("invalid_request_error", m, 400), nil
 		}
@@ -145,6 +153,7 @@ func registration() map[string]any {
 				{Name: "virtual_models", Type: pluginapi.ConfigFieldTypeArray, Description: "Virtual models: names or {name,min_tier,max_tier}."},
 				{Name: "classifier", Type: pluginapi.ConfigFieldTypeObject, Description: "{kind: model|jev, model, effort, timeout_ms, jev:{base_url,model,api_key}}"},
 				{Name: "default_tier", Type: pluginapi.ConfigFieldTypeInteger, Description: "Tier used when classification fails with no history."},
+				{Name: "routing", Type: pluginapi.ConfigFieldTypeObject, Description: "{mode: weighted|tier, under_penalty, over_penalty, sticky (cache-first, default false), sticky_margin (default 0.8), failover (default true), failover_cooldown_seconds (150), failover_max_attempts (3), failover_inline (experimental, false)}."},
 				{Name: "pool", Type: pluginapi.ConfigFieldTypeArray, Description: "List of {tier, model, provider, effort, efforts}."},
 				{Name: "escalation", Type: pluginapi.ConfigFieldTypeObject, Description: "Auto escalation settings."},
 				{Name: "state_file", Type: pluginapi.ConfigFieldTypeString, Description: "Where the panel saves its config (default plugins/cpa-auto-router.state.json)."},
@@ -211,7 +220,7 @@ func routeModel(raw []byte) ([]byte, error) {
 	}
 	if d.NoImageModel {
 		if m, ok := imageFallback(req.AvailableProviders); ok {
-			d.Model, d.Provider, d.TargetModel = m.ID, m.Provider, m.ID
+			d.Model, d.Provider, d.TargetModel, d.ModelTier = m.ID, m.Provider, m.ID, 0
 			d.Reason += " → image-fallback(cpa)"
 			router.Patch(d)
 		} else {
@@ -219,6 +228,7 @@ func routeModel(raw []byte) ([]byte, error) {
 			noImageMsg.Store(msg)
 			d.Reason += " → no-image-model(400)"
 			router.Patch(d)
+			router.MarkDone(d, core.Result{OK: false, Status: 400})
 			hostLog("warn", "auto-router: image request with no image-capable model; returning 400")
 			return okEnvelope(pluginapi.ModelRouteResponse{Handled: true, TargetKind: pluginapi.ModelRouteTargetSelf, Target: pluginName, Reason: "auto-router:no-image-model"})
 		}
@@ -230,7 +240,13 @@ func routeModel(raw []byte) ([]byte, error) {
 		d.Reason += " (provider-unavailable)"
 	}
 	if d.Provider == "" || d.TargetModel == "" {
+		router.MarkDone(d, core.Result{OK: false})
 		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false})
+	}
+	if cfg.Routing.Failover && cfg.Routing.FailoverInline && len(d.Fallbacks) > 0 {
+		rememberInline(req.Body, d, req.AvailableProviders)
+		hostLog("info", fmt.Sprintf("auto-router: %s session=%s -> %s/%s via inline failover executor (%d alternatives)", d.Virtual, d.Session, d.Provider, d.TargetModel, len(d.Fallbacks)))
+		return okEnvelope(pluginapi.ModelRouteResponse{Handled: true, TargetKind: pluginapi.ModelRouteTargetSelf, Target: pluginName, Reason: "auto-router:" + d.Reason + " (failover)"})
 	}
 	hostLog("info", fmt.Sprintf("auto-router: %s fmt=%s session=%s(%s) turn=%d tier=%d(base %d +%d) -> %s/%s reason=%s %s classify=%dms",
 		d.Virtual, d.Format, d.Session, d.SessionSrc, d.Turn, d.Tier, d.BaseTier, d.Escalation, d.Provider, d.TargetModel, d.Reason, d.Signal, d.ClassifyMs))
@@ -293,6 +309,11 @@ func handleUsage(raw []byte) {
 		router.ReportUsage(rec.Model, res)
 	}
 	if !rec.Failed {
+		router.Uncool(rec.Model)
+		return
+	}
+	if router.FailedUsage(cfg, rec.Model, rec.Failure.StatusCode, "") {
+		hostLog("info", fmt.Sprintf("auto-router: upstream failure %d on %s; cooling down %s, routing skips it", rec.Failure.StatusCode, rec.Model, cfg.Routing.Cooldown()))
 		return
 	}
 	if router.ReportFailure(rec.Model, rec.Failure.StatusCode) {
@@ -512,7 +533,7 @@ func handleManagement(raw []byte) ([]byte, error) {
 		_, saved := loadSaved(cfg.StateFile)
 		return jsonResp(200, map[string]any{
 			"version": pluginVersion, "config": redacted(cfg), "saved_override": saved, "state_file": cfg.StateFile,
-			"available_providers": lastProviders.Load(), "sessions": router.Sessions(), "decisions": router.Recent(200),
+			"available_providers": lastProviders.Load(), "sessions": router.Sessions(), "decisions": router.Recent(200), "active": router.Active(), "cooling": router.Cooling(),
 			"classifier_latency": stats.summary(), "profiles": poolProfiles(cfg),
 		})
 	case strings.HasSuffix(p, "/config") && strings.EqualFold(req.Method, "GET"):

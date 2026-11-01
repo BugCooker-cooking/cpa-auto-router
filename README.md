@@ -23,7 +23,8 @@
 - 🧠 **按模型的思考强度**：思考档位表移植自 [oh-my-pi](https://github.com/can1357/oh-my-pi)，并与 CPA 实际接受的值取交集；升级时沿该模型自己的档位阶梯上调。
 - 🖼️ **图片感知**：请求含图片时，自动排除不支持图片的模型。
 - ⬆️ **自动升级**：用户不满意的追问、上游失败 / 拒答、可选的 review 标记 → 档位 +1（顶档时提升强度），最多 2 步，连续 3 轮正常后回落，空闲 30 分钟重置。
-- 🔀 **流程图**：入口 → 分类器 → 档位 → 升级 → 模型 的桑基式视图，可点击会话查看每一轮路径。
+- 🔀 **流程图**：入口 → 分类器 → 档位 → 升级 → 模型 的桑基式视图，可点击会话查看每一轮路径；档位按**实际调用模型的档位**计数，**正在输出的请求**以闪烁节点 + 橙/黄色流动虚线标出（v0.3.6）。
+- 📌 **粘性路由（缓存优先，可选，默认关闭）**：会话当前模型仍可用且得分与最高分相差 ≤ 阈值（默认 0.8 分）时沿用当前模型，减少来回切换、提高提示词缓存命中率（v0.3.6）。
 - 🔢 **Token 统计**：输入 / 缓存 / 写入 / 输出，按会话与决策汇总。
 - 🎨 **主题跟随 CPA**：浅色 / 深色自动切换。
 - 🧩 **虚拟模型**：`auto`、`auto-fast`（T1–T2）、`auto-max`（T4–T5），出现在 `/v1/models`。
@@ -36,7 +37,9 @@
 | 流程图（浅色）<br>![](docs/screenshots/flow-light.png) | 会话下钻 + Token<br>![](docs/screenshots/flow-session-drilldown-tokens.png) |
 | 运行状态 / 决策 / Token<br>![](docs/screenshots/decisions-token-stats.png) | 管理密码弹窗<br>![](docs/screenshots/auth-modal.png) |
 | 模型选择器<br>![](docs/screenshots/model-picker.png) | 思考强度档位<br>![](docs/screenshots/thinking-effort-levels.png) |
-| 8 维能力评分<br>![](docs/screenshots/capability-scores.png) | |
+| 8 维能力评分<br>![](docs/screenshots/capability-scores.png) | 正在运行的模型（深色）<br>![](docs/screenshots/flow-running-dark.png) |
+| 粘性路由开关<br>![](docs/screenshots/sticky-routing-toggle.png) | 故障转移设置<br>![](docs/screenshots/failover-settings.png) |
+| 故障转移跳转 / 冷却（深色）<br>![](docs/screenshots/failover-hops-dark.png) | |
 
 ## 环境要求
 
@@ -67,6 +70,8 @@ cpa-auto-router:
     - {tier: 1, model: "gemini-3.5-flash-lite", provider: "my-provider"}
     - {tier: 3, model: "gpt-5.6-sol", provider: "my-provider", effort: "medium"}
     - {tier: 5, model: "claude-opus-5-5-high", provider: "my-provider"}
+  routing: {mode: weighted, under_penalty: 1.5, over_penalty: 1.0, sticky: false, sticky_margin: 0.8,
+             failover: true, failover_cooldown_seconds: 150, failover_max_attempts: 3, failover_inline: false}
   escalation: {enabled: true, on_unhappy: true, on_failure: true, max_steps: 2, decay_after_turns: 3, reset_idle_minutes: 30}
   state_file: "plugins/cpa-auto-router.state.json"
 ```
@@ -79,7 +84,7 @@ cpa-auto-router:
 | `default_tier` | 分类失败时的默认档位 |
 | `respect_client_effort` | 是否尊重客户端传入的思考强度 |
 | `pool[]` | `tier`、`model`、`provider`、`effort`、`efforts`、`scores`（8 维）、`image` |
-| `routing` | 路由方式（多维加权）及档位扣分系数 |
+| `routing` | 路由方式（多维加权）及档位扣分系数；`sticky` / `sticky_margin` 见下方“粘性路由”；`failover*` 见“自动故障转移” |
 | `escalation` | 自动升级：`on_unhappy`、`on_failure`、`max_steps`、`decay_after_turns`、`reset_idle_minutes`、`review{enabled, markers}` |
 | `state_file` | 面板保存的配置，优先于 yaml；面板“恢复为 config.yaml”会删除它 |
 
@@ -88,6 +93,40 @@ cpa-auto-router:
 打开 `http://<CPA 地址>/v0/resource/plugins/cpa-auto-router/panel`。首次会弹出**管理密码**对话框，输入 CPA 的 management key（可选择仅保存在本浏览器）。面板包含：运行状态、模型池、分类器、自动升级、流程图。
 
 相关接口（需 management key）：`/v0/management/auto-router/{state,config,decisions,models,classifier-test}`。
+
+## 粘性路由（缓存优先）
+
+自动路由每次都按得分选最优模型，相邻几轮的维度权重稍有波动就可能在两个分数相近的模型之间来回切换，导致上游提示词缓存失效、缓存命中率下降。开启 **粘性路由** 后：
+
+- 若会话已有当前模型，且该模型**仍然可用**（仍在模型池 / 虚拟模型档位范围内；请求含图片时支持图片输入），
+- 且它的最终得分与本次最高分之差 **≤ `sticky_margin`**（默认 **0.8** 分，略低于默认的“高一档扣 1.0 分”，因此不会为了缓存而接受整整一档的错配），
+- 则沿用当前模型，不切换。
+
+例外：当前模型低于本次所需档位、而最高分模型档位更高时（例如自动升级），照常切换，升级不会被粘性挡住。仅在“多维加权”模式生效；“仅按档位”模式本身就是确定性的。
+
+面板：模型池 → 基本 → “粘性路由（缓存优先）”开关与“保持阈值”。被沿用的决策在运行状态、会话流转中显示 `📌 sticky` 徽标（悬停可见原本的最高分模型），流程图模型节点显示 📌 次数，日志信号中带 `sticky`。
+
+权衡：开启后缓存命中率更高、成本与首字延迟通常更低，但不再每一轮都切到理论最优的模型，因此默认关闭，由用户自行选择。
+
+## 自动故障转移
+
+默认开启。上游返回**可重试**错误时——连接失败、5xx、429、`auth_not_found`/503、超时（以及 401/403/404 这类凭证/渠道问题）——该模型进入冷却（默认 **150 秒**），路由按当前排名（多维加权分数或档位距离）改用下一个合格模型，同样遵守图片能力与虚拟模型的档位范围。冷却结束自动恢复；若所有合格模型都在冷却，仍尝试最优的那个。请求本身导致的 4xx（如 400/413/422）不会触发；含图片请求的 400 仍走原有的图片兜底逻辑。处理为故障转移的失败不再触发“失败升档”。
+
+| 配置 | 默认 | 说明 |
+|---|---|---|
+| `routing.failover` | `true` | 总开关 |
+| `routing.failover_cooldown_seconds` | `150` | 失败模型冷却时长 |
+| `routing.failover_max_attempts` | `3` | 同请求内重试模式下每个请求最多尝试次数（上限 5） |
+| `routing.failover_inline` | `false` | 实验：同一请求内重试 |
+
+面板：模型池 → 基本 设置；模型池行和流程图模型节点显示 `❄ 冷却` 倒计时；运行状态与会话流转中显示 `⚠ failover: A ✗503 → B` 跳转记录及“跳过冷却中”的模型。
+
+**限制（请务必了解）**
+
+- CPA 插件 ABI 的 `model.route` 只决定路由目标，插件拿不到该次上游调用的结果，只能事后从用量回调得知失败。因此**默认模式下故障转移从下一个请求开始生效**：失败的那个请求，客户端仍会收到原始错误（多数客户端会自动重试，重试即落到下一个模型）。
+- `failover_inline: true` 时，虚拟模型请求被路由到插件自身的执行器，由插件通过 `host.model.execute(_stream)` 指定提供方调用上游，并在同一请求内依次重试候选模型。此模式**未在真实 CPA 上验证**，协议转换/请求头行为可能与直连不同，因此默认关闭。
+- 流式请求只能在**首个数据块之前**切换模型；一旦开始向客户端输出，中途失败无法无缝转移。
+- 冷却状态只保存在内存中，重启 CPA 后清空。
 
 ## 虚拟模型
 

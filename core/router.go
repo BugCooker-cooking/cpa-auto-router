@@ -22,6 +22,7 @@ type Decision struct {
 	BaseTier     int                `json:"base_tier"`
 	Escalation   int                `json:"escalation"`
 	Tier         int                `json:"tier"`
+	ModelTier    int                `json:"model_tier,omitempty"` // pool tier of the model actually invoked (0 = outside pool)
 	Model        string             `json:"model"`
 	Provider     string             `json:"provider"`
 	Effort       string             `json:"effort,omitempty"`
@@ -37,6 +38,12 @@ type Decision struct {
 	HasImage     bool               `json:"has_image,omitempty"`
 	ImageFilter  []string           `json:"image_filtered,omitempty"` // pool models excluded because they lack image input
 	NoImageModel bool               `json:"no_image_model,omitempty"` // image request but no image-capable pool entry
+	Cooled       []string           `json:"cooled,omitempty"`      // candidates skipped because they were cooling down
+	AllCooling   bool               `json:"all_cooling,omitempty"` // every eligible model was cooling; best one used anyway
+	Fallbacks    []Candidate        `json:"fallbacks,omitempty"`   // failover alternatives after the chosen model, best first
+	Hops         []Hop              `json:"hops,omitempty"`        // failed attempts before the final model
+	Sticky       bool               `json:"sticky,omitempty"`      // sticky routing kept the session's current model
+	StickyTop    string             `json:"sticky_top,omitempty"`  // model that would have been chosen without stickiness
 	Result       *Result            `json:"result,omitempty"`         // upstream outcome, filled from usage records
 }
 
@@ -112,6 +119,7 @@ type Router struct {
 	failedAt time.Time
 	log      []Decision
 	recent   map[string]recentRoute // base model -> last session routed there
+	cool     map[string]coolEntry   // base model -> cooldown after upstream failure
 	Classify ClassifyFunc
 	Now      func() time.Time
 }
@@ -259,16 +267,56 @@ func (r *Router) Decide(cfg Config, virtual string, format string, stream bool, 
 	d.BaseTier, d.Escalation, d.Tier = base, s.esc, tier
 	p, ok := cfg.Pick(tier)
 	if cfg.Routing.Mode != "tier" && len(cfg.Pool) > 0 {
-		need := base + s.esc
 		d.Weights = weights
-		d.Scores = cfg.Rank(weights, need, vm)
-		if len(d.Scores) > 0 {
-			p, ok = cfg.Entry(d.Scores[0].Model)
+		d.Scores = cfg.Rank(weights, base+s.esc, vm)
+	}
+	// Failover order with cooling models removed (if all are cooling, keep them all).
+	cands := order(cfg, tier, d.Scores, vm)
+	var avail []PoolEntry
+	for _, c := range cands {
+		if r.coolingLocked(c.Model, now) {
+			d.Cooled = append(d.Cooled, c.Model)
+		} else {
+			avail = append(avail, c)
+		}
+	}
+	if len(avail) == 0 && len(cands) > 0 {
+		avail, d.AllCooling = cands, true
+		d.Signal = joinSig(d.Signal, "all-cooling")
+	} else if len(d.Cooled) > 0 {
+		d.Signal = joinSig(d.Signal, "skip-cooling")
+	}
+	if len(avail) > 0 {
+		p, ok = avail[0], true
+		if cfg.Routing.Mode != "tier" && len(d.Scores) > 0 {
+			var fs []ModelScore
+			for _, sc := range d.Scores {
+				for _, a := range avail {
+					if strings.EqualFold(a.Model, sc.Model) {
+						fs = append(fs, sc)
+					}
+				}
+			}
+			need := base + s.esc
+			pick := fs[0]
+			if sp, keep := cfg.Routing.StickyPick(fs, s.decided.Model, need); keep {
+				d.Sticky, d.StickyTop = true, pick.Model
+				d.Signal = joinSig(d.Signal, "sticky")
+				pick = sp
+			}
+			p, ok = cfg.Entry(pick.Model)
 			d.Tier = p.Tier
+		}
+		for _, a := range avail {
+			if strings.EqualFold(a.Model, p.Model) {
+				continue
+			}
+			d.Fallbacks = append(d.Fallbacks, Candidate{Model: a.Model, Provider: a.Provider, Target: a.Target(up), Tier: a.Tier})
 		}
 	}
 	if ok {
-		d.Model, d.Provider = p.Model, p.Provider
+		d.Model, d.Provider, d.ModelTier = p.Model, p.Provider, p.Tier
+		d.Tier = p.Tier
 		eff, _ := p.RaiseEffort(up)
 		if cfg.RespectClientEffort && s.esc == 0 && t.ClientEffort != "" && !strings.HasPrefix(t.ClientEffort, "thinking:") {
 			eff = t.ClientEffort
@@ -388,6 +436,68 @@ func ParseTier(raw string) int {
 	}
 	n, _ := strconv.Atoi(m)
 	return n
+}
+
+// FlowTier is the tier lane a decision belongs to in the flow chart: the tier of
+// the model that was actually invoked, falling back to the effective tier and only
+// then to the classifier's base tier (base_tier is pre-escalation and must not be used
+// for counting).
+func FlowTier(d Decision) int {
+	if d.ModelTier > 0 {
+		return d.ModelTier
+	}
+	if d.Tier > 0 {
+		return d.Tier
+	}
+	return d.BaseTier
+}
+
+// ActiveWindow bounds how long a decision without an upstream result counts as running.
+const ActiveWindow = 10 * time.Minute
+
+// InFlight is one request currently being served upstream.
+type InFlight struct {
+	At          time.Time `json:"at"`
+	Session     string    `json:"session"`
+	Virtual     string    `json:"virtual"`
+	Model       string    `json:"model"`
+	TargetModel string    `json:"target_model"`
+	Tier        int       `json:"tier"`
+	BaseTier    int       `json:"base_tier"`
+	Escalation  int       `json:"escalation"`
+}
+
+// Active returns requests routed but not yet completed (no usage record), newest first.
+// A request leaves this list when ReportUsage attaches its result (success or error),
+// or when MarkDone is called, or after ActiveWindow.
+func (r *Router) Active() []InFlight {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	now := r.Now()
+	out := []InFlight{}
+	for i := len(r.log) - 1; i >= 0; i-- {
+		d := r.log[i]
+		if now.Sub(d.At) > ActiveWindow {
+			break
+		}
+		if d.Result == nil && d.Model != "" {
+			out = append(out, InFlight{At: d.At, Session: d.Session, Virtual: d.Virtual, Model: d.Model, TargetModel: d.TargetModel, Tier: FlowTier(d), BaseTier: d.BaseTier, Escalation: d.Escalation})
+		}
+	}
+	return out
+}
+
+// MarkDone attaches a terminal result to a decision that will never reach upstream.
+func (r *Router) MarkDone(d Decision, res Result) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for i := len(r.log) - 1; i >= 0 && i >= len(r.log)-50; i-- {
+		if r.log[i].At.Equal(d.At) && r.log[i].Session == d.Session {
+			rc := res
+			r.log[i].Result = &rc
+			return
+		}
+	}
 }
 
 // Recent returns the newest decisions first.
